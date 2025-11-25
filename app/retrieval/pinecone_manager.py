@@ -49,6 +49,10 @@ class PineconeManager:
     def get_index_stats(self):
         return self.index.describe_index_stats()
     
+    def fetch_by_ids(self, ids: list):
+        """Fetch text/metadata from Pinecone using chunk IDs"""
+        result = self.index.fetch(ids=ids)
+        return result
 
     def initiate_embeddings(self,unique_chunks):
         try:

@@ -25,7 +25,6 @@ class DocumentChunker:
                 splits=self.splitter.split_text(doc.text)
                 for index ,text in enumerate(splits):
                     chunk=Chunk(
-                        id=str(uuid.uuid4()),
                         text=text,
                         metadata={
                             **doc.metadata,

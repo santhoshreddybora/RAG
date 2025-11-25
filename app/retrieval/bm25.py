@@ -18,6 +18,7 @@ class BM25Manager:
                 self.corpus.append(tokens)
                 self.chunk_ids.append(chunk.id)
             self.bm25=BM25Okapi(self.corpus)
+            logging.info("BM25 index built successfully")
         except Exception as e:
             logging.info(f"Error in building index of BM25 {e}")
     

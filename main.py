@@ -4,6 +4,8 @@ from app.preprocessing.chunker import DocumentChunker
 from app.logger import logging
 from app.retrieval.pinecone_manager import PineconeManager
 from app.retrieval.bm25 import BM25Manager
+from app.retrieval.hybrid_retriever import HybridRetriever
+from app.generator.gpt_client import GPTClient
 def main():
     # print("=== Clinical RAG – Config Test ===")
     # print("OPENAI_API_KEY present:", bool(settings.OPENAI_API_KEY))
@@ -20,11 +22,25 @@ def main():
     pinecone.initiate_embeddings(unique_chunks)
     logging.info(" Stored in Pinecone")
     logging.info(f"Pinecone Stats:{pinecone.get_index_stats()}")
-    bm25 = BM25Manager()
-    bm25.build_index(unique_chunks)
-    bm25.save()
+    # bm25 = BM25Manager()
+    # bm25.build_index(unique_chunks)
+    # bm25.save()
 
-    print("✅ BM25 index stored as bm25_index.pkl")
+    # query="can you tell me about the health status with respective each year?"
+    # retriever=HybridRetriever()
+    # contexts=retriever.hybrid_search(query)
+    # if not contexts:
+    #     print("❌ No relevant context found")
+    #     contexts = ["No relevant context available."]
+    # logging.info("Retrieved contexts:")
+    # for c in contexts:
+    #     logging.info(c)
+    #     logging.info("--"*40)
+    # llm=GPTClient()
+    # answer=llm.generate_text(query,contexts)
+    # logging.info("✅ Text generation completed.")
+    # logging.info(f"Answer: {answer}")
+    # print(" BM25 index stored as bm25_index.pkl")
 
 
 if __name__ == "__main__":

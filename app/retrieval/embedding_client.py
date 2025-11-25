@@ -10,7 +10,7 @@ class EuriEmbeddingClient:
     Wrapper around EURI Embedding API
     """
     def __init__(self):
-        self.url=os.getenv('url')
+        self.url=os.getenv('EURI_API_URL')
         self.headers={
             "Content_type":"application/json",
             "Authorization":f"Bearer {os.getenv('OPENAI_API_KEY')}"
