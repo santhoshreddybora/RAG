@@ -12,7 +12,7 @@ class EuriEmbeddingClient:
     def __init__(self):
         self.url=os.getenv('EURI_API_URL')
         self.headers={
-            "Content_type":"application/json",
+            "Content-Type":"application/json",
             "Authorization":f"Bearer {os.getenv('OPENAI_API_KEY')}"
         }
     

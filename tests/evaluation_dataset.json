@@ -1,0 +1,15 @@
+[
+  {
+    "question": "The Indian Health sector consists of",
+    "relevant_texts": [
+      "he Indian health sector comprises various components, including medical care providers such as physicians, specialist clinics, nursing homes, and hospitals.  ",
+      "It also includes diagnostic service centers and pathology laboratories, as well as medical equipment manufacturers. Additionally, the sector encompasses contract research organizations (CROs) and pharmaceutical manufacturers. "
+    ]
+  },
+  {
+    "question": "Traditional Healthcare Systems in India",
+    "relevant_texts": [
+      "The Ayurveda (meaning science of life) system deals with causes, symptoms, diagnoses, and treatment based on all aspects of well-being (mental, physical, and spiritual). These professionals, traditionally, have been inheriting the skills from their ancestors"
+    ,"The Siddha system defines disease as the condition in which the normal equilibrium of the five elements in human beings is lost resulting in different forms of discomfort"]
+  }
+]

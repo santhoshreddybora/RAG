@@ -4,6 +4,9 @@ load_dotenv()
 
 import os
 import requests
+from app.tracking.mlflow_manager import MLflowManager
+import time
+
 
 
 class GPTClient:
@@ -20,7 +23,7 @@ class GPTClient:
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {self.api_key}"
             }
-
+            self.mlflow=MLflowManager()
             logging.info("GPTClient initialized successfully")
 
         except Exception as e:
@@ -39,22 +42,22 @@ class GPTClient:
             context = "\n\n".join(contexts)
 
             prompt = f"""
-You are a clinical healthcare analyst. Use the context below to answer the question.
+                        You are a clinical healthcare analyst. Use the context below to answer the question.
 
-If a direct answer is not present, summarize the most relevant information 
-from the context related to the question.
+                        If a direct answer is not present, summarize the most relevant information 
+                        from the context related to the question. DO NOT make up answers. If the context does not contain relevant information,
 
-Context:
-{context}
+                        Context:
+                        {context}
 
-Question:
-{query}
+                        Question:
+                        {query}
 
-Give a detailed, 5–8 sentence answer in a professional tone.
+                        Give a detailed, 5–8 sentence answer in a professional tone.
 
-If absolutely nothing is found, then respond:
-"I do not have enough information in the provided documents."
-"""
+                        If absolutely nothing is found, then respond:
+                        "I do not have enough information in the provided documents."
+                        """
 
             payload = {
                 "model": "gpt-4.1-nano",
@@ -79,6 +82,14 @@ If absolutely nothing is found, then respond:
                 return "Error occurred while generating answer."
 
             data = response.json()
+            self.mlflow.log_param("model", "gpt-4.1-nano")
+            self.mlflow.log_param("temperature", 0.2)
+            start = time.time()
+            answer = data["choices"][0]["message"]["content"]
+            gen_time = time.time() - start
+
+            self.mlflow.log_metric("generation_time", gen_time)
+            self.mlflow.log_text(answer, "answer.txt")
 
             return data["choices"][0]["message"]["content"]
 

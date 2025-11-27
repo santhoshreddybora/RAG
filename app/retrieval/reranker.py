@@ -13,9 +13,9 @@ class CrossEncoderReranker:
                 return []
             pairs=[(query,text) for text in texts]
 
-            scores=self.model.predict(pairs)
-            ranked=sorted(zip(texts,scores),key=lambda x:x[1],reverse=True)
+            scores = self.model.predict(pairs)
 
-            return [text for text,score in ranked[:top_k]]
+        # Return (text, score) tuples
+            return list(zip(texts, scores))
         except Exception as e:
             logging.info(f"Error in rerank function of CrossEncoder class : {e}")

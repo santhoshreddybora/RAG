@@ -27,21 +27,25 @@ class PineconeManager:
         except Exception as e:
             logging.error(f"ERROR in init block of pinecone manager{e}")
     
-    def upsert_chunks(self,chunks:List[Chunk],embeddings:List[list]):
+    def upsert_chunks(self,chunks:List[Chunk],embeddings:List[list],batch_size:int=100):
         try:
             logging.info("upserting chunks into pinecone db through upsert_chunks function")
-            vectors=[]
+            batch=[]
             for chunk,vector in zip(chunks,embeddings):
-                vectors.append(
+                batch.append(
                     (chunk.id,
                     vector,
                     {
                         **chunk.metadata,
                         "text":chunk.text
                     })
-                )
-            self.index.upsert(vectors=vectors)
-            logging.info("embedding inserted into pinecone db")
+                    )
+                if len(batch) >= batch_size:
+                    self.index.upsert(vectors=batch)
+                    batch = []
+            if batch:
+                self.index.upsert(vectors=batch)
+            logging.info("embedding inserted into pinecone db in batch successfully")
         except Exception as e:
             logging.error(f"Error inserting into pinecone {e}")
 
@@ -60,9 +64,9 @@ class PineconeManager:
             embedder=EuriEmbeddingClient()
             chunk_text=[chunk.text for chunk in unique_chunks]
             embeddings=embedder.embed(chunk_text)
+            print("Embedding length example:", len(embeddings[0]))
             print(f"Embeddings generated: {len(embeddings)}")
-            pinecone=PineconeManager()
-            pinecone.upsert_chunks(unique_chunks,embeddings=embeddings)
+            self.upsert_chunks(unique_chunks,embeddings=embeddings)
             logging.info("Initiate embeddings is completed ")
         except Exception as e:
             logging.error(f"Error in initiate_embeddings {e}")

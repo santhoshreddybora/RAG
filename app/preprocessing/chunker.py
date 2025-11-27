@@ -4,6 +4,7 @@ import uuid
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from app.dataclasses import RawDocument,Chunk
 from app.preprocessing.deduplicator import ChunkDeduplicator
+import re
 
 class DocumentChunker:
     """This class used for chunking the data which we loaded into docs 
@@ -16,6 +17,11 @@ class DocumentChunker:
             separators=[" ",".","\n","\n\n"])
         except Exception as e:
             logging.error(f"Error in initializing the documentchunker : {e}")
+    @staticmethod
+    def clean_text(text):
+        text = re.sub(r"\s+", " ", text)
+        text = re.sub(r"[•\uf0a7\u2217]", "", text)
+        return text.strip()
     
     def chunk_documents(self,docs:List[RawDocument])->List[Chunk]:
         try:
@@ -24,13 +30,18 @@ class DocumentChunker:
             for doc in docs:
                 splits=self.splitter.split_text(doc.text)
                 for index ,text in enumerate(splits):
+                    cleaned_text = self.clean_text(text)
+                #  Skip empty junk chunks
+                    if len(cleaned_text) < 30:
+                        continue
                     chunk=Chunk(
-                        text=text,
+                        text=cleaned_text,
                         metadata={
                             **doc.metadata,
                             "chunk_index":index
                         }
                     )
+
                     all_chunks.append(chunk)
             return all_chunks
         except Exception as e:
