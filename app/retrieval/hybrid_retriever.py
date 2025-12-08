@@ -30,7 +30,9 @@ class HybridRetriever:
             pinecone_results=self.pinecone.index.query(
                 vector=query_embedding,
                 top_k=top_k,
-                include_metadata=True
+                include_metadata=True,
+                namespace=self.pinecone.namespace  
+
             )
             pinecone_ids=[match['id'] for match in pinecone_results['matches']]
             # ----------- 3. MERGE IDS ---------------
@@ -53,7 +55,7 @@ class HybridRetriever:
             for ctx in contexts:
                 c_emb = self.embedder.embed([ctx])[0]
                 score = np.dot(q_emb, c_emb) / (np.linalg.norm(q_emb) * np.linalg.norm(c_emb))
-                if score > 0.5:
+                if score > 0.35:
                     filtered.append(ctx)
 
             contexts = filtered
@@ -61,7 +63,7 @@ class HybridRetriever:
             # -> [(text, score), (text, score), ...]
 
             # FILTER: keep only high quality text
-            filtered = [(t, s) for t, s in reranked if s > 0.35]
+            filtered = [(t, s) for t, s in reranked if s > 0.20]
 
             if not filtered:
                 logging.warning("No contexts passed score threshold, returning top 1 fallback")

@@ -21,6 +21,8 @@ unstructured[pdf]==0.12.5
 unstructured[image]==0.12.5
 
 pytesseract==0.3.10
+opencv-python-headless==4.5.5.64  # safe for Docker
+
 
 python-dotenv==1.0.1
 scikit-learn==1.4.1.post1

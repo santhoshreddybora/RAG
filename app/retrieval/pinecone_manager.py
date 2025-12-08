@@ -12,6 +12,8 @@ class PineconeManager:
         try:
             self.pc=Pinecone(api_key=os.getenv('PINECONE_API_KEY'))
             self.index_name=os.getenv('PINECONE_INDEX_NAME')
+            self.namespace = "default"
+
 
             if self.index_name not in [i["name"] for i in self.pc.list_indexes()]:
                 self.pc.create_index(
@@ -25,6 +27,7 @@ class PineconeManager:
                 )
             self.index=self.pc.Index(self.index_name)
         except Exception as e:
+            print("❌ Pinecone Init Failed:", e)   #  visible in docker log
             logging.error(f"ERROR in init block of pinecone manager{e}")
     
     def upsert_chunks(self,chunks:List[Chunk],embeddings:List[list],batch_size:int=100):
@@ -41,12 +44,13 @@ class PineconeManager:
                     })
                     )
                 if len(batch) >= batch_size:
-                    self.index.upsert(vectors=batch)
+                    self.index.upsert(vectors=batch,namespace=self.namespace)
                     batch = []
             if batch:
-                self.index.upsert(vectors=batch)
+                self.index.upsert(vectors=batch,namespace=self.namespace)
             logging.info("embedding inserted into pinecone db in batch successfully")
         except Exception as e:
+
             logging.error(f"Error inserting into pinecone {e}")
 
 
@@ -55,7 +59,7 @@ class PineconeManager:
     
     def fetch_by_ids(self, ids: list):
         """Fetch text/metadata from Pinecone using chunk IDs"""
-        result = self.index.fetch(ids=ids)
+        result = self.index.fetch(ids=ids, namespace=self.namespace)
         return result
 
     def initiate_embeddings(self,unique_chunks):

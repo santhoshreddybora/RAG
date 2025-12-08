@@ -23,7 +23,13 @@ class GPTClient:
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {self.api_key}"
             }
-            self.mlflow=MLflowManager()
+            # try:
+            #     self.mlflow = MLflowManager()
+            #     logging.info("📌 MLflow enabled")
+            # except Exception as e:
+            #     self.mlflow = None
+            #     logging.warning(f"⚠️ MLflow disabled: {e}")
+
             logging.info("GPTClient initialized successfully")
 
         except Exception as e:
@@ -45,7 +51,7 @@ class GPTClient:
                         You are a clinical healthcare analyst. Use the context below to answer the question.
 
                         If a direct answer is not present, summarize the most relevant information 
-                        from the context related to the question. DO NOT make up answers. If the context does not contain relevant information,
+                        from the context related to the question.
 
                         Context:
                         {context}
@@ -71,7 +77,7 @@ class GPTClient:
                         "content": prompt
                     }
                 ],
-                "max_tokens": 1000,
+                "max_tokens": 500,
                 "temperature": 0.2
             }
 
@@ -82,17 +88,18 @@ class GPTClient:
                 return "Error occurred while generating answer."
 
             data = response.json()
-            self.mlflow.log_param("model", "gpt-4.1-nano")
-            self.mlflow.log_param("temperature", 0.2)
-            start = time.time()
-            answer = data["choices"][0]["message"]["content"]
-            gen_time = time.time() - start
+            # self.mlflow.log_param("model", "gpt-4.1-nano")
+            # self.mlflow.log_param("temperature", 0.2)
+            # start = time.time()
+            # answer = data["choices"][0]["message"]["content"]
+            # gen_time = time.time() - start
 
-            self.mlflow.log_metric("generation_time", gen_time)
-            self.mlflow.log_text(answer, "answer.txt")
+            # self.mlflow.log_metric("generation_time", gen_time)
+            # self.mlflow.log_text(answer, "answer.txt")
 
             return data["choices"][0]["message"]["content"]
 
         except Exception as e:
             logging.error(f"Error in generate_text: {e}")
-            return "Error occurred while generating answer."
+            logging.error(f"❌ LLM generation failed: {e}", exc_info=True)
+            return f"Error occurred while generating answer: {e}"
