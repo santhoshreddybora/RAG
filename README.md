@@ -6,6 +6,7 @@ It ingests clinical / healthcare PDF documents, chunks and embeds them, stores t
 
 ---
 
+
 ## Key Features (What This Project Implements)
 
 - **End-to-end RAG pipeline for clinical QA**
