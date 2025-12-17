@@ -1,71 +1,92 @@
 import streamlit as st
 import requests
 import os
+from datetime import datetime
+
 # =============================
-# 🔧 CONFIG — FastAPI URL
+# 🔧 CONFIG
 # =============================
-API_URL = os.getenv("API_URL")
+API_URL = os.getenv("API_URL", "http://localhost:8000")
 ASK_URL = f"{API_URL}/ask"
 FEEDBACK_URL = f"{API_URL}/feedback"
 
 # =============================
-# 🎨 STREAMLIT PAGE
+#  SESSION STATE INIT
+# =============================
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+
+# =============================
+#  PAGE SETUP
 # =============================
 st.set_page_config(page_title="Clinical RAG Assistant", layout="wide")
-st.title("🩺 Clinical RAG Assistant 🤖")
-
-# Input box
-question = st.text_input("🔍 Ask a clinical/medical question")
-
+st.title("🩺 Clinical RAG Assistant")
 
 # =============================
-# 🚀 CALL FASTAPI /ask
+#  DISPLAY CHAT HISTORY
+# =============================
+for msg in st.session_state.chat_history:
+    if msg["role"] == "user":
+        st.markdown(
+            f"""
+            <div class="chat-message user">
+                <b>You:</b><br>{msg["content"]}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            f"""
+            <div class="chat-message assistant">
+                <b>Assistant:</b><br>{msg["content"]}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+# =============================
+# USER INPUT
+# =============================
+question = st.text_input("Ask a clinical/medical question")
+
+# =============================
+# BACKEND CALL
 # =============================
 def ask_backend(question: str):
-    try:
-        res = requests.post(ASK_URL, json={"question": question})
-        if res.status_code != 200:
-            st.error("❌ Backend Error!")
-            return None, None
-        data = res.json()
-        return data["answer"], data["contexts"]
-    except Exception as e:
-        st.error(f"⚠️ Request failed: {e}")
+    res = requests.post(ASK_URL, json={"question": question})
+    if res.status_code != 200:
         return None, None
-
+    data = res.json()
+    return data["answer"], data["contexts"]
 
 # =============================
-# 🎭 Show Result + Sources
+# SUBMIT BUTTON
 # =============================
-if st.button("Get Answer"):
-    if not question.strip():
-        st.warning("⚠️ Please enter a question.")
-    else:
+if st.button("Send"):
+    if question.strip():
+        # 1️⃣ Add user message
+        st.session_state.chat_history.append({
+            "role": "user",
+            "content": question
+        })
+
         with st.spinner("🤖 Thinking..."):
             answer, contexts = ask_backend(question)
 
+        # 2️⃣ Add assistant message
         if answer:
-            st.subheader("🧠 Answer")
-            st.write(answer)
+            st.session_state.chat_history.append({
+                "role": "assistant",
+                "content": answer
+            })
 
-            st.subheader("📚 Sources")
-            for i, ctx in enumerate(contexts or [], 1):
-                st.markdown(f"**Source {i}:** {ctx[:300]}...")
+        # 3️⃣ Rerun to update UI
+        st.rerun()
 
-            # Feedback
-            st.subheader("📝 Was this answer helpful?")
-            col1, col2 = st.columns(2)
-
-            with col1:
-                if st.button("👍 Yes"):
-                    requests.post(FEEDBACK_URL, json={
-                        "question": question, "answer": answer, "helpful": True
-                    })
-                    st.success("Thank you for the feedback! 💙")
-
-            with col2:
-                if st.button("👎 No"):
-                    requests.post(FEEDBACK_URL, json={
-                        "question": question, "answer": answer, "helpful": False
-                    })
-                    st.warning("Feedback noted! 👀")
+# =============================
+# CLEAR CHAT
+# =============================
+if st.button("Clear Chat"):
+    st.session_state.chat_history = []
+    st.rerun()

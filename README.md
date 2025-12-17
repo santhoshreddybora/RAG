@@ -268,7 +268,7 @@ These metrics are also logged to MLflow (if configured).
 
 To run the API:
 
-uvicorn app.api.main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 
 
 Then open:
@@ -391,9 +391,9 @@ WEBSITES_PORT = 8501
 
 BACKEND_URL = https://<your-api-app>.azurewebsites.net
 
-📌 Current Status vs. Future Enhancements
+== Current Status vs. Future Enhancements
 
-✅ Currently implemented:
+-- Currently implemented:
 
 E2E RAG pipeline (ingestion → indexing → hybrid retrieval → rerank → answer)
 
@@ -405,9 +405,9 @@ Streamlit UI (question, answer, sources, feedback)
 
 Manual Docker build & Azure App Service deployment (API + UI)
 
-🚧 Planned / Next steps (not yet done):
-
 Conversational chat with chat history (stateful sessions)
+
+-- Planned / Next steps (not yet done):
 
 CI/CD with GitHub Actions (auto build & deploy on dev / main)
 
@@ -416,13 +416,6 @@ More robust evaluation (bigger dataset, better metrics dashboards)
 Authentication / authorization for clinical use (Azure AD, etc.)
 
 Centralized logging & monitoring via Application Insights
-
-🧾 License
-
-(Choose one for your repo: MIT, Apache 2.0, etc.)
-
-MIT License
-...
 
 
 If you’re reading this in the repo, start with:

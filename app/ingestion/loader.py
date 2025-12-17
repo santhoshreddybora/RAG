@@ -6,7 +6,8 @@ from langchain_community.document_loaders import (
     PyPDFLoader,
     TextLoader,
     UnstructuredWordDocumentLoader,
-    UnstructuredImageLoader
+    UnstructuredImageLoader,
+    Docx2txtLoader
 )
 from app.dataclasses import RawDocument
 import fitz
@@ -42,7 +43,7 @@ class Documentloader:
 
                     image=Image.open(io.BytesIO(image_bytes))
 
-                    text+=pytesseract.image_to_string(image)
+                    # text+=pytesseract.image_to_string(image)
                     text += pytesseract.image_to_string(image)
                     # print("OCR SAMPLE:", text[:200])  
 
@@ -81,7 +82,7 @@ class Documentloader:
 
             other_loaders=[
                  DirectoryLoader(self.data_path, glob="**/*.txt", loader_cls=TextLoader),
-                DirectoryLoader(self.data_path, glob="**/*.docx", loader_cls=UnstructuredWordDocumentLoader),
+                DirectoryLoader(self.data_path, glob="**/*.docx", loader_cls=Docx2txtLoader),
                 DirectoryLoader(
                     self.data_path,
                     glob="**/*.[pj][pn]g",

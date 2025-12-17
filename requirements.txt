@@ -1,5 +1,6 @@
 fastapi==0.110.2
 uvicorn[standard]==0.29.0
+euriai
 
 sentence-transformers==2.2.2
 transformers==4.39.3
@@ -34,3 +35,5 @@ mlflow==2.10.2
 
 pytest==8.2.0
 requests==2.31.0
+
+streamlit==1.33.0
