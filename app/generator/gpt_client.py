@@ -20,10 +20,7 @@ class GPTClient:
             if not self.url or not self.api_key:
                 raise ValueError("EURI_CHAT_URI or OPENAI_API_KEY is missing in .env")
 
-            # self.headers = {
-            #     "Content-Type": "application/json",
-            #     "Authorization": f"Bearer {self.api_key}"
-            # }
+         
             self.client=EuriaiClient(
                 api_key=self.api_key,
                 model='gpt-4.1-nano'
@@ -34,24 +31,32 @@ class GPTClient:
         except Exception as e:
             logging.error(f"Error in GPTClient init: {e}")
 
-    def generate_text(self, query: str, contexts: list) -> str:
+    def generate_text(self, query: str, contexts: list,history:list) -> str:
         try:
             logging.info("Generating text in generate_text function of GPTClient class")
 
             # ✅ 1. Important guard
             if not contexts or len(contexts) == 0:
                 logging.warning("No contexts available to generate answer.")
-                return "I do not have enough information in the provided documents."
-
+                # yield "I do not have enough information in the provided documents."
+                return "No contexts available to generate answer."
+            
+            history_prompt = ""
+            for msg in history:
+                history_prompt += f"{msg['role']}: {msg['content']}\n"
+            
             # ✅ 2. Now join contexts
             context = "\n\n".join(contexts)
 
             prompt = f"""
-                        You are a clinical healthcare analyst. Use the context below to answer the question.
+                        You are a health care  analyst. Use the context below to answer the question.
 
                         If a direct answer is not present, summarize the most relevant information 
                         from the context related to the question.
 
+                        Conversation so far:
+                        {history_prompt}
+                        
                         Context:
                         {context}
 
@@ -63,47 +68,34 @@ class GPTClient:
                         If absolutely nothing is found, then respond:
                         "I do not have enough information in the provided documents."
                         """
-
-            # payload = {
-            #     "model": "gpt-4.1-nano",
-            #     "messages": [
-            #         {
-            #             "role": "system",
-            #             "content": "You are a factual, safe medical assistant"
-            #         },
-            #         {
-            #             "role": "user",
-            #             "content": prompt
-            #         }
-            #     ],
-            #     "max_tokens": 500,
-            #     "temperature": 0.2
-            # }
-
             response=self.client.generate_completion(
                 prompt=prompt,
                 temperature=0.2,
-                max_tokens=500
+                max_tokens=1000
             )
-            # response = requests.post(self.url, headers=self.headers, json=payload)
+            response_text=response['choices'][0]['message']['content']
 
-            # if response.status_code != 200:
-            #     logging.error(f"GPT API failed: {response.text}")
-            #     return "Error occurred while generating answer."
+            return response_text
 
-            # data = response.json()
-            # self.mlflow.log_param("model", "gpt-4.1-nano")
-            # self.mlflow.log_param("temperature", 0.2)
-            # start = time.time()
-            # answer = data["choices"][0]["message"]["content"]
-            # gen_time = time.time() - start
+            # for chunk in response_text.split(" "):
+            #     yield chunk + " "
+            #     time.sleep(0.01)
 
-            # self.mlflow.log_metric("generation_time", gen_time)
-            # self.mlflow.log_text(answer, "answer.txt")
-
-            return response["choices"][0]["message"]["content"]
+            # for chunk in response:
+            #     token = chunk["choices"][0].get("delta", {}).get("content")
+            #     if token:
+            #         yield token
 
         except Exception as e:
             logging.error(f"Error in generate_text: {e}")
             logging.error(f"❌ LLM generation failed: {e}", exc_info=True)
+            # yield f"Error occurred while generating answer: {e}"
             return f"Error occurred while generating answer: {e}"
+        
+    def summarize(self, prompt: str) -> str:
+        response = self.client.generate_completion(
+                prompt=prompt,
+                temperature=0.2,
+                max_tokens=300
+            )
+        return response["choices"][0]["message"]["content"]

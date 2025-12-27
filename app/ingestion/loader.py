@@ -4,6 +4,7 @@ from app.logger import logging
 from langchain_community.document_loaders import (
     DirectoryLoader,
     PyPDFLoader,
+    PyMuPDFLoader,
     TextLoader,
     UnstructuredWordDocumentLoader,
     UnstructuredImageLoader,
@@ -59,7 +60,7 @@ class Documentloader:
 
             pdf_loader=DirectoryLoader(path=self.data_path,
                         glob="**/*.pdf",
-                        loader_cls=PyPDFLoader)
+                        loader_cls=PyMuPDFLoader)
             for loc_docs in pdf_loader.load():
                 text=loc_docs.page_content
 

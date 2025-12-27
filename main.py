@@ -9,12 +9,12 @@ from app.generator.gpt_client import GPTClient
 from tests.evaluate_metrics import EvaluateMetrics
 
 def main():
-    # print("=== Clinical RAG – Config Test ===")
-    # print("OPENAI_API_KEY present:", bool(settings.OPENAI_API_KEY))
-    # print("PINECONE_API_KEY present:", bool(settings.PINECONE_API_KEY))
-    # print("PINECONE_ENV:", settings.PINECONE_ENV)
-    # print("PINECONE_INDEX_NAME:", settings.PINECONE_INDEX_NAME)
-    # print("AZURE_BLOB_CONTAINER:", settings.AZURE_BLOB_CONTAINER)
+    print("=== Clinical RAG – Config Test ===")
+    print("OPENAI_API_KEY present:", bool(settings.OPENAI_API_KEY))
+    print("PINECONE_API_KEY present:", bool(settings.PINECONE_API_KEY))
+    print("PINECONE_ENV:", settings.PINECONE_ENV)
+    print("PINECONE_INDEX_NAME:", settings.PINECONE_INDEX_NAME)
+    print("AZURE_BLOB_CONTAINER:", settings.AZURE_BLOB_CONTAINER)
     loader=Documentloader(data_path='data')
     docs=loader.start_data_loading()
     chunker=DocumentChunker(chunk_size=300,chunk_overlap=120)
@@ -32,7 +32,7 @@ def main():
     # results = evaluator.evaluate_all()
     # logging.info(f"Final Metrics:\n{results}")
 
-    # query="What are the major components of the Indian health care sector?"
+    # query="What skills did santhosh have ? and how much experience he holding?"
     # retriever=HybridRetriever()
     # contexts=retriever.hybrid_search(query)
     # if not contexts:

@@ -37,3 +37,7 @@ pytest==8.2.0
 requests==2.31.0
 
 streamlit==1.33.0
+sqlalchemy 
+asyncpg 
+psycopg2-binary
+

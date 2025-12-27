@@ -5,7 +5,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from app.dataclasses import RawDocument,Chunk
 from app.preprocessing.deduplicator import ChunkDeduplicator
 import re
-
+import hashlib
 class DocumentChunker:
     """This class used for chunking the data which we loaded into docs 
     """
@@ -21,7 +21,13 @@ class DocumentChunker:
     def clean_text(text):
         text = re.sub(r"\s+", " ", text)
         text = re.sub(r"[•\uf0a7\u2217]", "", text)
+        text = re.sub(r"\n{2,}", "\n", text)
+        text = re.sub(r"[ \t]{2,}", " ", text)
         return text.strip()
+    
+    # def chunk_id(self,doc_id,chunk_index,text):
+    #     h=hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]
+    #     return f"{doc_id}_c{chunk_index}_{h}"
     
     def chunk_documents(self,docs:List[RawDocument])->List[Chunk]:
         try:
@@ -38,8 +44,9 @@ class DocumentChunker:
                         text=cleaned_text,
                         metadata={
                             **doc.metadata,
-                            "chunk_index":index
-                        }
+                            "chunk_index":index,
+                            "doc_id":doc.id
+                                }
                     )
 
                     all_chunks.append(chunk)

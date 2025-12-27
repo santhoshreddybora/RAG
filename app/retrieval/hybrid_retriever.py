@@ -7,6 +7,11 @@ from app.core.config import settings
 from app.logger import logging
 from app.tracking.mlflow_manager import MLflowManager
 import numpy as np
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+
+executor = ThreadPoolExecutor(max_workers=4)
+
 class HybridRetriever:
     def __init__(self):
         try:
@@ -18,67 +23,64 @@ class HybridRetriever:
             self.reranker=CrossEncoderReranker()
         except Exception as e:
             logging.error(f"Error initializing HybridRetriever: {e}")
-    
-    def hybrid_search(self,query:str,top_k:int=5)->List[str]:
+
+    async def hybrid_search(self,query:str,top_k:int=5)->List[str]:
         try:
             logging.info(f"Starting hybrid search in HybridRetriever with query: {query}")
-            # ----------- 1. BM25 SEARCH -------------
-            bm25_results=self.bm25.search(query,top_k=top_k)
-            bm25_ids=[item[0] for item in bm25_results]
+            loop = asyncio.get_running_loop()
 
-            query_embedding=self.embedder.embed([query])[0]
-            pinecone_results=self.pinecone.index.query(
-                vector=query_embedding,
-                top_k=top_k,
-                include_metadata=True,
-                namespace=self.pinecone.namespace  
-
+            # 1️⃣ Parallel BM25 + Query Embedding
+            bm25_task = loop.run_in_executor(
+                executor, self.bm25.search, query, top_k
             )
-            pinecone_ids=[match['id'] for match in pinecone_results['matches']]
-            # ----------- 3. MERGE IDS ---------------
-            all_ids=list(set(bm25_ids + pinecone_ids))
-            # ----------- 4. FETCH TEXT --------------
+
+            embed_task = loop.run_in_executor(
+                executor, self.embedder.embed, [query]
+            )
+
+            bm25_results, query_embedding = await asyncio.gather(
+                bm25_task, embed_task
+            )
+
+            # 2️⃣ Pinecone vector search (executor)
+            pinecone_results = await loop.run_in_executor(
+                executor,
+                lambda: self.pinecone.index.query(
+                    vector=query_embedding[0],
+                    top_k=top_k,
+                    include_metadata=True,
+                    namespace=self.pinecone.namespace
+                )
+            )
+
+            # 3️⃣ Merge IDs
+            bm25_ids = [x[0] for x in bm25_results]
+            pinecone_ids = [m["id"] for m in pinecone_results["matches"]]
+            all_ids = list(set(bm25_ids + pinecone_ids))
+
+            # 4️⃣ Fetch chunks
             response = self.pinecone.fetch_by_ids(all_ids)
 
-            contexts=[]
-            if "vectors" in response:
-                for _id,data in response["vectors"].items():
-                    text=data['metadata'].get('text')
-                    if text:
-                        contexts.append(text)
-            logging.info(f"Total contexts before rerank: {len(contexts)}")
-            filtered_contexts = [c for c in contexts if len(c) > 30]
-            contexts = filtered_contexts
-            q_emb = self.embedder.embed([query])[0]
+            contexts = [
+                v["metadata"]["text"]
+                for v in response.get("vectors", {}).values()
+                if len(v["metadata"].get("text", "")) > 30
+            ]
 
-            filtered = []
-            for ctx in contexts:
-                c_emb = self.embedder.embed([ctx])[0]
-                score = np.dot(q_emb, c_emb) / (np.linalg.norm(q_emb) * np.linalg.norm(c_emb))
-                if score > 0.35:
-                    filtered.append(ctx)
+            if not contexts:
+                return []
 
-            contexts = filtered
-            reranked = self.reranker.rerank(query, contexts)  
-            # -> [(text, score), (text, score), ...]
+            # 5️⃣ Rerank (executor — VERY IMPORTANT)
+            reranked = await loop.run_in_executor(
+                executor,
+                self.reranker.rerank,
+                query,
+                contexts
+            )
 
-            # FILTER: keep only high quality text
-            filtered = [(t, s) for t, s in reranked if s > 0.20]
-
-            if not filtered:
-                logging.warning("No contexts passed score threshold, returning top 1 fallback")
-                filtered = sorted(reranked, key=lambda x: x[1], reverse=True)[:1]
-
-            # Sort by best score & keep top_k
-            filtered = sorted(filtered, key=lambda x: x[1], reverse=True)[:top_k]
-
-            final_contexts = [t for t, _ in filtered]
-
-            logging.info(f"Total contexts after rerank & filter: {len(final_contexts)}")
-
-            # DEBUG (you can keep this for now)
-            for i, c in enumerate(final_contexts):
-                logging.info(f"Context {i+1}: {c[:150]}")
+            # 6️⃣ Filter & return
+            reranked = sorted(reranked, key=lambda x: x[1], reverse=True)
+            final_contexts = [t for t, _ in reranked[:top_k]]
 
             return final_contexts
         except Exception as e:

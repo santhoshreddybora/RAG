@@ -25,6 +25,7 @@ class EuriEmbeddingClient:
             payload={
                 "input": texts,
                 "model": "text-embedding-3-small"
+
             }
 
             response=requests.post(self.url,headers=self.headers,json=payload)
@@ -37,5 +38,6 @@ class EuriEmbeddingClient:
             return embeddings
         except Exception as e:
             logging.info(f"Error in embed function {e}")
+            return []
         
 

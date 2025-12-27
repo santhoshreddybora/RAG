@@ -22,10 +22,10 @@ class RawDocument:
 class Chunk:
     text: str
     metadata: Dict
-    
+
     @property
     def id(self)->str:
-        return hashlib.sha256(self.text.encode("utf-8")).hexdigest()
+        return hashlib.sha256(self.text.encode('utf-8')).hexdigest()
     
     def content_hash(self) -> str:
         return self.id

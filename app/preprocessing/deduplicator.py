@@ -12,7 +12,6 @@ class ChunkDeduplicator:
             unique_chunks=[]
             for chunk in chunks:
                 h=chunk.content_hash()
-
                 if h not in self.seen_hashes:
                     self.seen_hashes.add(h)
                     unique_chunks.append(chunk)
