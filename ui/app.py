@@ -102,11 +102,34 @@ if st.button("Send"):
             })
         # 3️⃣ Rerun to update UI
         st.rerun()
+with st.sidebar:
+    st.title("💬 Chats")
 
-if st.button("➕ New Chat"):
-    st.session_state.session_id = str(uuid.uuid4())
-    st.session_state.chat_history = []
-    st.rerun()
+    if st.button("➕ New Chat"):
+        st.session_state.session_id = str(uuid.uuid4())
+        st.session_state.chat_history = []
+        st.rerun()
+
+    sessions = requests.get(f"{API_URL}/sessions").json()
+
+    for s in sessions:
+        if st.button(s["title"], key=s["id"]):
+            st.session_state.session_id = s["id"]
+
+            # Load history
+            msgs = requests.get(
+                f"{API_URL}/sessions/{s['id']}/messages"
+            ).json()
+
+            st.session_state.chat_history = msgs
+            st.rerun()
+
+
+# # if st.button("➕ New Chat"):
+#     st.session_state.session_id = str(uuid.uuid4())
+#     st.session_state.chat_history = []
+#     st.rerun()
+
 
 # CLEAR CHAT
 if st.button("Clear Chat"):

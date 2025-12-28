@@ -9,6 +9,7 @@ Base = declarative_base()
 class ChatSession(Base):
     __tablename__ = "chat_sessions"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title= Column(String, default="New Session")
     created_at = Column(DateTime, server_default=func.now())
 
 class ChatMessage(Base):

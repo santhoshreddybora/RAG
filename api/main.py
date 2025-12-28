@@ -16,7 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
 from app.memory.summarizer import update_summary
 from app.db.database import get_db
-from app.memory.session_manager import ensure_session
+from app.memory.session_manager import ensure_session,is_first_message,set_session_title
+from app.db.models import ChatSession,ChatMessage
+from sqlalchemy.future import select
+from uuid import UUID
+
 
 semantic_cache=SemanticCache()
 
@@ -54,8 +58,15 @@ def chunk_text(text: str, chunk_size=20):
 
 @app.post("/ask")
 async def ask_question(req: QueryRequest,db:AsyncSession=Depends(get_db)):
-    session_id=req.session_id
+    # session_id=req.session_id
+    session_id = UUID(req.session_id)
     await ensure_session(db, session_id)
+    is_new = await is_first_message(db, session_id)
+
+    if is_new:
+        title = req.question[:50]  # trim
+        await set_session_title(db, session_id, title)
+
     # ## Check Cache first 
     # cache_key = f"{session_id}:{req.question}"
     cached_answer = semantic_cache.get(req.session_id, req.question)
@@ -115,6 +126,37 @@ async def ask_question(req: QueryRequest,db:AsyncSession=Depends(get_db)):
         chunk_text(answer),
         media_type="text/plain"
     )
+
+@app.get("/sessions/{session_id}/messages")
+async def get_session_messages(
+    session_id: UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(
+        select(ChatMessage)
+        .where(ChatMessage.session_id == session_id)
+        .order_by(ChatMessage.created_at.asc())
+    )
+    messages = result.scalars().all()
+
+    return [
+        {"role": m.role, "content": m.content}
+        for m in messages
+    ]
+
+
+
+@app.get("/sessions")
+async def list_sessions(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(ChatSession)
+        .order_by(ChatSession.created_at.desc())
+    )
+    sessions = result.scalars().all()
+    return [
+        {"id": s.id, "title": s.title, "created_at": s.created_at}
+        for s in sessions
+    ]
 
 
 
