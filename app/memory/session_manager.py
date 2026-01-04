@@ -4,32 +4,39 @@ from app.db.models import ChatSession,ChatMessage
 import uuid
 from app.db.models import ChatSession
 from uuid import UUID
+from app.db.database import AsyncSessionLocal
+from app.memory.chat_memory import save_summary,get_summary
+from app.memory.summarizer import update_summary
+from app.generator.gpt_client import GPTClient
 
-async def ensure_session(db, session_id: UUID):
-    result = await db.execute(
-        select(ChatSession.id).where(ChatSession.id == session_id)
-    )
-    session = result.scalar_one_or_none()
+llm=GPTClient()
 
-    if session is None:
+async def update_and_save_summary(session_id, existing_summary, messages):
+    async with AsyncSessionLocal() as db:
+        new_summary = await update_summary(
+            llm=llm,
+            existing_summary=existing_summary,
+            messages=messages
+        )
+        await save_summary(db, session_id, new_summary)
+
+async def ensure_session_and_check_first(db, session_id):
+    # Check if session exists
+    session = await db.get(ChatSession, session_id)
+
+    if not session:
         session = ChatSession(id=session_id)
         db.add(session)
         await db.commit()
+        return session, True  # first message
 
-    return session
-
-async def is_first_message(db, session_id: UUID) -> bool:
-    """
-    Returns True if no messages exist yet for this session
-    """
+    # Check if messages exist
     result = await db.execute(
         select(func.count(ChatMessage.id))
         .where(ChatMessage.session_id == session_id)
-        .limit(1)
     )
-    count=result.scalar()
-    return count==0
-
+    count = result.scalar()
+    return session, count == 0
 
 async def set_session_title(db, session_id: UUID, title: str):
     session = await db.get(ChatSession, session_id)
@@ -37,3 +44,6 @@ async def set_session_title(db, session_id: UUID, title: str):
         return
     session.title = title
     await db.commit()
+
+
+

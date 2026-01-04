@@ -26,7 +26,7 @@ class SemanticCache:
     def _hash(text: str) -> str:
         return hashlib.sha256(text.encode()).hexdigest()[:16]
 
-    def get(self, session_id: str, query: str) -> Optional[str]:
+    def get(self, session_id: str, query: str,query_embedding:list) -> Optional[str]:
         try:
             query_hash = self._hash(query)
             key = f"rag_cache:{session_id}:{query_hash}"
@@ -37,7 +37,7 @@ class SemanticCache:
 
             cached = json.loads(cached)
 
-            query_emb = self.embedder.embed([query])[0]
+            query_emb = query_embedding
             score = self._cosine_similarity(query_emb, cached["embedding"])
 
             if score >= self.threshold:
@@ -51,12 +51,12 @@ class SemanticCache:
             logging.error(f"SemanticCache.get error: {e}")
             return None
 
-    def set(self, session_id: str, query: str, answer: str):
+    def set(self, session_id: str, query: str, answer: str,query_embedding:list):
         try:
             query_hash = self._hash(query)
             key = f"rag_cache:{session_id}:{query_hash}"
 
-            emb = self.embedder.embed([query])[0]
+            emb = query_embedding
 
             payload = {
                 "embedding": emb,

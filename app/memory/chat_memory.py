@@ -1,15 +1,21 @@
 from sqlalchemy.future import select
 from app.db.models import ChatMessage, ChatSummary
+from app.db.database import AsyncSessionLocal
+from app.memory.summarizer import update_summary
+from app.generator.gpt_client import GPTClient
 
 LAST_N = 6  # configurable
+llm=GPTClient()
 
-async def save_message(db, session_id, role, content):
-    msg = ChatMessage(
+
+
+async def save_message_bulk(db, session_id, messages):
+    for role,content in messages:
+        msg = ChatMessage(
         session_id=session_id,
         role=role,
-        content=content
-    )
-    db.add(msg)
+        content=content)
+        db.add(msg)
     await db.commit()
 
 async def get_last_n_messages(db, session_id):
@@ -24,21 +30,20 @@ async def get_last_n_messages(db, session_id):
     return [
         {"role":m.role,"content":m.content} for m in reversed(messages)
         ]
+
 async def get_summary(db, session_id):
     q = select(ChatSummary).where(ChatSummary.session_id == session_id)
     res = await db.execute(q)
     return res.scalar_one_or_none()
 
 async def save_summary(db, session_id, summary_text):
-    existing = await get_summary(db, session_id)
-    if existing:
-        existing.summary = summary_text
+    summary = await get_summary(db, session_id)
+    if summary:
+        summary.summary = summary_text
     else:
-        new_summary = ChatSummary(
+        summary = ChatSummary(
             session_id=session_id,
             summary=summary_text
         )
-        db.add(new_summary)
+        db.add(summary)
     await db.commit()
-
-

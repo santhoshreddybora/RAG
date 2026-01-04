@@ -31,8 +31,8 @@ class GPTClient:
         except Exception as e:
             logging.error(f"Error in GPTClient init: {e}")
 
-    def generate_text(self, query: str, contexts: list,history:list) -> str:
-        try:
+    def generate_text(self, query: str, contexts: list,history:list,retries:int = 3) -> str:
+        
             logging.info("Generating text in generate_text function of GPTClient class")
 
             # ✅ 1. Important guard
@@ -68,29 +68,33 @@ class GPTClient:
                         If absolutely nothing is found, then respond:
                         "I do not have enough information in the provided documents."
                         """
-            response=self.client.generate_completion(
-                prompt=prompt,
-                temperature=0.2,
-                max_tokens=1000
-            )
-            response_text=response['choices'][0]['message']['content']
+            for attempt in range(1, retries + 1):
+                try:
+                    logging.info(f"LLM request attempt {attempt}")
 
-            return response_text
+                    response = self.client.generate_completion(
+                        prompt=prompt,
+                        temperature=0.2,
+                        max_tokens=1000,
+                    )
 
-            # for chunk in response_text.split(" "):
-            #     yield chunk + " "
-            #     time.sleep(0.01)
+                    return response["choices"][0]["message"]["content"]
 
-            # for chunk in response:
-            #     token = chunk["choices"][0].get("delta", {}).get("content")
-            #     if token:
-            #         yield token
+                except requests.exceptions.ConnectionError as e:
+                    logging.warning(
+                        f"LLM connection error (attempt {attempt}): {e}"
+                    )
+                    time.sleep(0.7 * attempt)
 
-        except Exception as e:
-            logging.error(f"Error in generate_text: {e}")
-            logging.error(f"❌ LLM generation failed: {e}", exc_info=True)
-            # yield f"Error occurred while generating answer: {e}"
-            return f"Error occurred while generating answer: {e}"
+                except Exception as e:
+                    logging.error(
+                        f"LLM unexpected error: {e}", exc_info=True
+                    )
+                    break
+
+        # 🔴 FINAL failure — no silent continuation
+            logging.error("LLM generation failed after retries")
+            return "Sorry, I’m having trouble generating a response right now."
         
     def summarize(self, prompt: str) -> str:
         response = self.client.generate_completion(
