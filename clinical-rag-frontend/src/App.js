@@ -1,11 +1,115 @@
-import React, { useState, useEffect, useRef } from 'react';
+  // Helper function to detect and parse tables
+  function parseTable(content) {
+    const lines = content.split('\n');
+    const tableLines = [];
+    let inTable = false;
+    const nonTableContent = [];
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      
+      // Detect table rows (lines with |)
+      if (line.includes('|') && line.trim().length > 0) {
+        inTable = true;
+        tableLines.push(line);
+      } else {
+        if (inTable && tableLines.length > 0) {
+          // End of table, process it
+          nonTableContent.push({ type: 'table', data: processTableLines(tableLines) });
+          tableLines.length = 0;
+          inTable = false;
+        }
+        if (line.trim().length > 0) {
+          nonTableContent.push({ type: 'text', data: line });
+        }
+      }
+    }
+    
+    // Handle remaining table
+    if (tableLines.length > 0) {
+      nonTableContent.push({ type: 'table', data: processTableLines(tableLines) });
+    }
+    
+    return nonTableContent;
+  }
+  
+  function processTableLines(lines) {
+    const rows = [];
+    let headerProcessed = false;
+    
+    for (const line of lines) {
+      // Skip separator lines (lines with mostly dashes)
+      const withoutPipes = line.replace(/\|/g, '').trim();
+      if (withoutPipes.replace(/-/g, '').replace(/=/g, '').trim().length === 0) {
+        headerProcessed = true;
+        continue;
+      }
+      
+      // Split by | and clean up
+      const cells = line.split('|')
+        .map(cell => cell.trim())
+        .filter(cell => cell.length > 0);
+      
+      if (cells.length > 0) {
+        rows.push({
+          isHeader: !headerProcessed,
+          cells: cells
+        });
+        if (!headerProcessed) headerProcessed = true;
+      }
+    }
+    
+    return rows;
+  }
+  
+  function renderContent(content) {
+    const parsed = parseTable(content || '');
+    
+    return parsed.map((item, idx) => {
+      if (item.type === 'table') {
+        return (
+          <div key={idx} className="table-container">
+            <table className="chat-table">
+              <thead>
+                {item.data.filter(row => row.isHeader).map((row, ridx) => (
+                  <tr key={ridx}>
+                    {row.cells.map((cell, cidx) => (
+                      <th key={cidx}>{cell}</th>
+                    ))}
+                  </tr>
+                ))}
+              </thead>
+              <tbody>
+                {item.data.filter(row => !row.isHeader).map((row, ridx) => (
+                  <tr key={ridx}>
+                    {row.cells.map((cell, cidx) => (
+                      <td key={cidx}>{cell}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      } else {
+        const isBullet = item.data.trim().startsWith('•') || 
+                        item.data.trim().startsWith('-') || 
+                        item.data.trim().match(/^\d+\./);
+        return (
+          <p key={idx} className={`message-text ${isBullet ? 'bullet-point' : ''}`}>
+            {item.data}
+          </p>
+        );
+      }
+    });
+  }import React, { useState, useEffect, useRef } from 'react';
 import { MessageSquare, Plus, Send, LogOut, User } from 'lucide-react';
 import './App.css';
 
 const API_URL = 'http://localhost:8000';
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(null); // null = checking, false = not authenticated, true = authenticated
   const [user, setUser] = useState(null);
   const [showAuthForm, setShowAuthForm] = useState('login');
   const [sessionId, setSessionId] = useState(() => generateUUID());
@@ -16,6 +120,8 @@ function App() {
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionsError, setSessionsError] = useState(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [sendLoading, setSendLoading] = useState(false);
   const chatEndRef = useRef(null);
   const abortControllerRef = useRef(null);
 
@@ -31,6 +137,8 @@ function App() {
     const token = localStorage.getItem('token');
     if (token) {
       verifyToken(token);
+    } else {
+      setIsAuthenticated(false);
     }
   }, []);
 
@@ -63,15 +171,18 @@ function App() {
         setIsAuthenticated(true);
       } else {
         localStorage.removeItem('token');
+        setIsAuthenticated(false);
       }
     } catch (err) {
       console.error('Token verification failed:', err);
       localStorage.removeItem('token');
+      setIsAuthenticated(false);
     }
   }
 
   async function handleLogin(e) {
     e.preventDefault();
+    setAuthLoading(true);
     try {
       const resp = await fetch(`${API_URL}/auth/login`, {
         method: 'POST',
@@ -92,11 +203,14 @@ function App() {
       }
     } catch (err) {
       alert('Login failed: ' + err.message);
+    } finally {
+      setAuthLoading(false);
     }
   }
 
   async function handleRegister(e) {
     e.preventDefault();
+    setAuthLoading(true);
     try {
       const resp = await fetch(`${API_URL}/auth/register`, {
         method: 'POST',
@@ -119,6 +233,8 @@ function App() {
       }
     } catch (err) {
       alert('Registration failed: ' + err.message);
+    } finally {
+      setAuthLoading(false);
     }
   }
 
@@ -193,6 +309,7 @@ function App() {
 
     const userQuestion = question.trim();
     setQuestion('');
+    setSendLoading(true);
     setChatHistory(prev => [...prev, { role: 'user', content: userQuestion }]);
     setIsStreaming(true);
 
@@ -222,7 +339,7 @@ function App() {
       const decoder = new TextDecoder();
       let answer = '';
 
-      setChatHistory(prev => [...prev, { role: 'assistant', content: '' }]);
+      setChatHistory(prev => [...prev, { role: 'assistant', content: '', isTyping: true }]);
 
       while (true) {
         const { done, value } = await reader.read();
@@ -233,7 +350,7 @@ function App() {
 
         setChatHistory(prev => {
           const newHistory = [...prev];
-          newHistory[newHistory.length - 1] = { role: 'assistant', content: answer };
+          newHistory[newHistory.length - 1] = { role: 'assistant', content: answer, isTyping: false };
           return newHistory;
         });
       }
@@ -241,13 +358,20 @@ function App() {
       await fetchSessions();
     } catch (err) {
       if (err.name !== 'AbortError') {
-        setChatHistory(prev => [...prev, {
-          role: 'assistant',
-          content: `⚠️ Error: ${err.message}`
-        }]);
+        setChatHistory(prev => {
+          const newHistory = [...prev];
+          if (newHistory[newHistory.length - 1]?.isTyping) {
+            newHistory.pop();
+          }
+          return [...newHistory, {
+            role: 'assistant',
+            content: `⚠️ Error: ${err.message}`
+          }];
+        });
       }
     } finally {
       setIsStreaming(false);
+      setSendLoading(false);
       abortControllerRef.current = null;
     }
   }
@@ -268,6 +392,11 @@ function App() {
     setSessionId(sid);
     const messages = await fetchMessages(sid);
     setChatHistory(messages);
+  }
+
+  // Show nothing while checking authentication
+  if (isAuthenticated === null) {
+    return null; // Browser will show its loading, then the HTML spinner
   }
 
   if (!isAuthenticated) {
@@ -307,8 +436,15 @@ function App() {
                 onChange={(e) => setAuthForm({...authForm, password: e.target.value})}
                 className="auth-input"
               />
-              <button onClick={handleLogin} className="auth-button">
-                Login
+              <button onClick={handleLogin} className="auth-button" disabled={authLoading}>
+                {authLoading ? (
+                  <span className="loading-spinner">
+                    <span className="spinner"></span>
+                    Logging in...
+                  </span>
+                ) : (
+                  'Login'
+                )}
               </button>
             </div>
           ) : (
@@ -341,8 +477,15 @@ function App() {
                 onChange={(e) => setAuthForm({...authForm, password: e.target.value})}
                 className="auth-input"
               />
-              <button onClick={handleRegister} className="auth-button">
-                Register
+              <button onClick={handleRegister} className="auth-button" disabled={authLoading}>
+                {authLoading ? (
+                  <span className="loading-spinner">
+                    <span className="spinner"></span>
+                    Registering...
+                  </span>
+                ) : (
+                  'Register'
+                )}
               </button>
             </div>
           )}
@@ -434,20 +577,17 @@ function App() {
               className={`message ${msg.role === 'user' ? 'message-user' : 'message-assistant'}`}
             >
               <div className="message-bubble">
-                <div style={{ overflowX: 'auto', maxWidth: '100%' }}>
-                  {(msg.content || '').split('\n').map((line, i) => {
-                    // Check if line is a bullet point
-                    const isBullet = line.trim().startsWith('•') || 
-                                     line.trim().startsWith('-') || 
-                                     line.trim().match(/^\d+\./);
-                    
-                    return (
-                      <p key={i} className={`message-text ${isBullet ? 'bullet-point' : ''}`}>
-                        {line}
-                      </p>
-                    );
-                  })}
-                </div>
+                {msg.isTyping ? (
+                  <div className="typing-indicator">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                ) : msg.role === 'assistant' ? (
+                  renderContent(msg.content)
+                ) : (
+                  <p className="message-text">{msg.content}</p>
+                )}
               </div>
             </div>
           ))}
@@ -468,11 +608,20 @@ function App() {
             />
             <button
               onClick={handleSendMessage}
-              disabled={isStreaming || !question.trim()}
+              disabled={isStreaming || !question.trim() || sendLoading}
               className="send-btn"
             >
-              <Send size={18} />
-              <span>Send</span>
+              {sendLoading ? (
+                <>
+                  <span className="spinner small"></span>
+                  <span>Sending...</span>
+                </>
+              ) : (
+                <>
+                  <Send size={18} />
+                  <span>Send</span>
+                </>
+              )}
             </button>
           </div>
         </div>

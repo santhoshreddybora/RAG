@@ -9,6 +9,35 @@
       content="Clinical RAG Assistant - AI-powered medical question answering"
     />
     <title>Clinical RAG Assistant</title>
+    <style>
+      /* Simple loading state for initial page load */
+      body {
+        margin: 0;
+        background-color: #111827;
+      }
+      
+      #root:empty {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        background-color: #111827;
+      }
+      
+      #root:empty::before {
+        content: '';
+        width: 48px;
+        height: 48px;
+        border: 4px solid rgba(37, 99, 235, 0.2);
+        border-top-color: #2563eb;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
