@@ -23,17 +23,24 @@ class GPTClient:
                 api_key=self.api_key,
                 model='gpt-4.1-nano'
             )
+            
+            # Configure session for connection pooling
+            self.session = requests.Session()
+            adapter = requests.adapters.HTTPAdapter(
+                pool_connections=10,
+                pool_maxsize=20
+            )
+            self.session.mount("https://", adapter)
 
             logging.info("GPTClient initialized successfully")
 
         except Exception as e:
             logging.error(f"Error in GPTClient init: {e}")
 
-    def generate_text(self, query: str, contexts: list, history: list, retries: int = 3) -> str:
+    def generate_text(self, query: str, contexts: list, history: list, retries: int = 2) -> str:
         
         logging.info("Generating text in generate_text function of GPTClient class")
 
-        # Guard against empty contexts
         if not contexts or len(contexts) == 0:
             logging.warning("No contexts available to generate answer.")
             return "No contexts available to generate answer."
@@ -43,8 +50,8 @@ class GPTClient:
         for msg in history:
             history_prompt += f"{msg['role']}: {msg['content']}\n"
         
-        # Join contexts
-        context = "\n\n".join(contexts)
+        # Join contexts - limit context size
+        context = "\n\n".join(contexts[:5])  # Use only top 5 contexts
         
         # Detect formatting requirements
         query_lower = query.lower()
@@ -52,76 +59,34 @@ class GPTClient:
         
         if any(word in query_lower for word in ['points', 'list', 'bullet', 'list down']):
             formatting_instructions = """
-FORMATTING REQUIREMENT: The user wants bullet points.
-Structure your answer as:
-• Point 1
-• Point 2
-• Point 3
-Use clear, concise bullet points."""
+FORMATTING: Use bullet points (•)"""
         
         elif any(word in query_lower for word in ['table', 'tabular', 'format as table', 'in table format']):
             formatting_instructions = """
-CRITICAL: User wants table format. 
-
-Create a simple table with pipes separating columns:
-
+FORMATTING: Create table with pipes (|) - keep columns SHORT:
 Column1 | Column2 | Column3
-Value1 | Value2 | Value3
-Value4 | Value5 | Value6
+Data1 | Data2 | Data3"""
 
-Keep it simple - just use | between columns. The frontend will render it beautifully."""
+        # Shorter system prompt
+        system_instructions = """You are a healthcare analyst.
 
-        # Enhanced system prompt with stronger table instructions
-        system_instructions = """You are a healthcare analyst and clinical knowledge assistant.
-
-CORE RESPONSIBILITIES:
-- Answer questions based on the provided context
-- Be accurate and cite specific data when available
-- Present information clearly and professionally
-
-CRITICAL FORMATTING RULES:
-1. BULLET POINTS: When user asks for "points" or "list", use this format:
-   • First point
-   • Second point
-   • Third point
-
-2. TABLES: When user asks for "table format", create a clean ASCII table:
-   
-   Column 1        | Column 2  | Column 3
-   ----------------|-----------|----------
-   Data A          | Value 1   | Info X
-   Data B          | Value 2   | Info Y
-   
-   IMPORTANT: Use pipe (|) separators, align columns, use dashes for headers
-
-3. PARAGRAPHS: For regular questions, use clear paragraph format
-
-ANSWER GUIDELINES:
-- If direct answer exists in context, provide it clearly
-- If partial information exists, summarize relevant details
-- If no information is found, state: "I do not have enough information in the provided documents."
-- ALWAYS follow the user's requested format exactly
-- For tables: ensure proper alignment and spacing"""
+                                Rules:
+                                - Answer from context only
+                                - Be concise and accurate
+                                - Follow requested format (bullet/table/paragraph)
+                                - For tables: Use | separators, SHORT column names"""
 
         prompt = f"""{system_instructions}
 
-{formatting_instructions}
+                        {formatting_instructions}
 
-Conversation so far:
-{history_prompt}
+                        History: {history_prompt[:500]}
 
-Context:
-{context}
+                            Context: {context[:2000]}
 
-Question: {query}
+                            Q: {query}
 
-IMPORTANT INSTRUCTIONS:
-- Extract data from context and present it in the requested format
-- If table is requested, create a properly formatted ASCII table with | separators
-- Align columns and use consistent spacing
-- Do not create broken or malformed tables
-
-Your answer:"""
+                            Answer:"""
 
         for attempt in range(1, retries + 1):
             try:
@@ -130,25 +95,39 @@ Your answer:"""
                 response = self.client.generate_completion(
                     prompt=prompt,
                     temperature=0.2,
-                    max_tokens=1000,
+                    max_tokens=600,  # Reduced for faster response
                 )
 
                 answer = response["choices"][0]["message"]["content"]
-                
-                # No need for post-processing - frontend handles table rendering
+                logging.info(f"✅ LLM generated {len(answer)} characters")
                 return answer
 
-            except requests.exceptions.ConnectionError as e:
-                logging.warning(f"LLM connection error (attempt {attempt}): {e}")
-                time.sleep(0.7 * attempt)
+            except requests.exceptions.Timeout:
+                logging.warning(f"⏱️  LLM timeout (attempt {attempt})")
+                if attempt == retries:
+                    return "Sorry, the response is taking too long. Please try again."
+                time.sleep(0.3)
+
+            except (requests.exceptions.ConnectionError, 
+                    ConnectionResetError, 
+                    requests.exceptions.ChunkedEncodingError) as e:
+                logging.warning(f"🔌 LLM connection error (attempt {attempt}): {str(e)[:100]}")
+                if attempt == retries:
+                    return "Sorry, connection error. Please try a shorter question."
+                time.sleep(0.5 * attempt)
+
+            except requests.exceptions.HTTPError as e:
+                logging.error(f"❌ LLM HTTP error: {e}")
+                if attempt == retries:
+                    return "Sorry, AI service error. Please try again."
+                time.sleep(0.3)
 
             except Exception as e:
-                logging.error(f"LLM unexpected error: {e}", exc_info=True)
-                break
+                logging.error(f"❌ LLM unexpected error: {e}")
+                return "Sorry, an error occurred. Please try again."
 
         logging.error("LLM generation failed after retries")
-        return "Sorry, I'm having trouble generating a response right now."
-    
+        return "Sorry, I'm having trouble right now. Please try again."
     def summarize(self, prompt: str) -> str:
         """Summarize conversation history"""
         response = self.client.generate_completion(

@@ -25,8 +25,14 @@ class EuriEmbeddingClient:
             backoff_factor=0.3,
             status_forcelist=[429, 500, 502, 503, 504],
         )
-        self.session.mount("https://", HTTPAdapter(max_retries=retries))
-    
+        adapter = HTTPAdapter(
+            pool_connections=10,
+            pool_maxsize=20,
+            max_retries=0  # We handle retries manually
+        )
+        self.session.mount("https://", adapter)
+        self.session.mount("http://", adapter)
+
     def embed(self,texts:List[str],retries:int=3)->List[List[float]]:
         """
         Takes a list of texts and returns list of embeddings
@@ -55,14 +61,25 @@ class EuriEmbeddingClient:
                     return []
                 return embeddings
             except requests.exceptions.Timeout:
-                logging.error("Embedding API timeout")
-                time.sleep(0.5*attempt)
+                logging.warning(f"⏱️  Embedding timeout (attempt {attempt}/{retries})")
+                if attempt == retries:
+                    raise Exception("Embedding API timeout after retries")
+                time.sleep(0.5 * attempt)  # Shorter backoff
+                
             except requests.exceptions.ConnectionError as e:
-                logging.error(f"Embedding connection error: {e}")
-                time.sleep(0.5*attempt)
+                logging.warning(f"🔌 Embedding connection error (attempt {attempt}/{retries}): {e}")
+                if attempt == retries:
+                    raise Exception("Embedding API connection failed")
+                time.sleep(0.5 * attempt)
+            except requests.exceptions.HTTPError as e:
+                logging.error(f"❌ Embedding HTTP error: {e}")
+                raise  # Don't retry on 4xx/5xx errors
             except Exception as e:
-                logging.error(f"Embedding failed: {e}")
-                break
+                logging.error(f"❌ Embedding unexpected error: {e}")
+                if attempt == retries:
+                    raise
+                time.sleep(0.5 * attempt)
         return []
-        
+
+            
 
