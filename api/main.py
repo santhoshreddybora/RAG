@@ -13,7 +13,7 @@ from app.memory.chat_memory import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.memory.session_manager import update_and_save_summary
-from app.db.database import get_db
+from app.db.database import get_db,AsyncSessionLocal
 from app.memory.session_manager import ensure_session_and_check_first, set_session_title
 from app.db.models import ChatSession, ChatMessage, User
 from sqlalchemy.future import select
@@ -87,7 +87,22 @@ async def log_request_time(step_name: str, start_time: float):
         total_elapsed = time.time() - start_time
         logging.info(f"⏱️  {step_name}: {step_elapsed:.2f}s | Total: {total_elapsed:.2f}s")
 
+async def background_save_messages(session_id: UUID, messages: list):
+    """Save messages in a new database session"""
+    async with AsyncSessionLocal() as db:
+        try:
+            await save_message_bulk(db, session_id, messages)
+            await db.commit()  # Important: commit the transaction
+        except Exception as e:
+            logging.error(f"Failed to save messages in background: {e}")
+            await db.rollback()
 
+async def background_update_summary(session_id: UUID, existing_summary: str, messages: list):
+    """Update summary in a new database session"""
+    try:
+        await update_and_save_summary(session_id, existing_summary, messages)
+    except Exception as e:
+        logging.error(f"Failed to update summary in background: {e}")
 
 def stream_cached_answer(answer: str):
     for word in answer.split():
@@ -194,15 +209,14 @@ async def ask_question(
     # Step 8: Save to database (background)
     async with log_request_time("8. Schedule background tasks", t0):
         background_tasks.add_task(
-            save_message_bulk,
-            db,
+            background_save_messages,
             session_id,
             [('user', req.question), ('assistant', answer)]
         )
         
         if len(last_messages) >= 6:
             background_tasks.add_task(
-                update_and_save_summary,
+                background_update_summary,
                 session_id,
                 existing_summary=summary_text,
                 messages=last_messages

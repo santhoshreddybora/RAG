@@ -5,9 +5,6 @@ from app.memory.summarizer import update_summary
 from app.generator.gpt_client import GPTClient
 
 LAST_N = 6  # configurable
-llm=GPTClient()
-
-
 
 async def save_message_bulk(db, session_id, messages):
     for role,content in messages:
@@ -16,7 +13,7 @@ async def save_message_bulk(db, session_id, messages):
         role=role,
         content=content)
         db.add(msg)
-    await db.commit()
+    # await db.commit()
 
 async def get_last_n_messages(db, session_id):
     q = (
@@ -46,4 +43,4 @@ async def save_summary(db, session_id, summary_text):
             summary=summary_text
         )
         db.add(summary)
-    await db.commit()
+    # await db.commit()

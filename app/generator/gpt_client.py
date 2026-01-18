@@ -9,7 +9,6 @@ import time
 from euriai import EuriaiClient
 
 
-
 class GPTClient:
     def __init__(self):
         try:
@@ -28,16 +27,19 @@ class GPTClient:
             self.session = requests.Session()
             adapter = requests.adapters.HTTPAdapter(
                 pool_connections=10,
-                pool_maxsize=20
+                pool_maxsize=20,
+                max_retries=3  # Add retries at adapter level
             )
             self.session.mount("https://", adapter)
+            self.session.mount("http://", adapter)
 
             logging.info("GPTClient initialized successfully")
 
         except Exception as e:
             logging.error(f"Error in GPTClient init: {e}")
 
-    def generate_text(self, query: str, contexts: list, history: list, retries: int = 2) -> str:
+    def generate_text(self, query: str, contexts: list, history: list, retries: int = 3) -> str:
+        """Generate text with improved retry logic"""
         
         logging.info("Generating text in generate_text function of GPTClient class")
 
@@ -70,24 +72,25 @@ Data1 | Data2 | Data3"""
         # Shorter system prompt
         system_instructions = """You are a healthcare analyst.
 
-                                Rules:
-                                - Answer from context only
-                                - Be concise and accurate
-                                - Follow requested format (bullet/table/paragraph)
-                                - For tables: Use | separators, SHORT column names"""
+Rules:
+- Answer from context only
+- Be concise and accurate
+- Follow requested format (bullet/table/paragraph)
+- For tables: Use | separators, SHORT column names"""
 
         prompt = f"""{system_instructions}
 
-                        {formatting_instructions}
+{formatting_instructions}
 
-                        History: {history_prompt[:500]}
+History: {history_prompt[:500]}
 
-                            Context: {context[:2000]}
+Context: {context[:2000]}
 
-                            Q: {query}
+Q: {query}
 
-                            Answer:"""
+Answer:"""
 
+        # Retry loop with exponential backoff
         for attempt in range(1, retries + 1):
             try:
                 logging.info(f"LLM request attempt {attempt}")
@@ -95,85 +98,178 @@ Data1 | Data2 | Data3"""
                 response = self.client.generate_completion(
                     prompt=prompt,
                     temperature=0.2,
-                    max_tokens=600,  # Reduced for faster response
+                    max_tokens=600,
                 )
 
                 answer = response["choices"][0]["message"]["content"]
                 logging.info(f"✅ LLM generated {len(answer)} characters")
                 return answer
 
-            except requests.exceptions.Timeout:
-                logging.warning(f"⏱️  LLM timeout (attempt {attempt})")
-                if attempt == retries:
-                    return "Sorry, the response is taking too long. Please try again."
-                time.sleep(0.3)
+            except requests.exceptions.Timeout as e:
+                wait_time = 2 ** attempt  # 2s, 4s, 8s
+                logging.warning(f"⏱️  LLM timeout (attempt {attempt}/{retries})")
+                if attempt < retries:
+                    logging.info(f"⏳ Retrying in {wait_time}s...")
+                    time.sleep(wait_time)
+                else:
+                    logging.error("❌ Request timed out after all retries")
+                    return "Sorry, the response is taking too long. Please try again with a shorter question."
 
             except (requests.exceptions.ConnectionError, 
-                    ConnectionResetError, 
-                    requests.exceptions.ChunkedEncodingError) as e:
-                logging.warning(f"🔌 LLM connection error (attempt {attempt}): {str(e)[:100]}")
-                if attempt == retries:
-                    return "Sorry, connection error. Please try a shorter question."
-                time.sleep(0.5 * attempt)
+                    ConnectionResetError,
+                    requests.exceptions.ChunkedEncodingError,
+                    BrokenPipeError,
+                    OSError) as e:
+                wait_time = 2 ** attempt  # Exponential backoff
+                error_msg = str(e)[:100]
+                logging.warning(f"🔌 LLM connection error (attempt {attempt}/{retries}): {error_msg}")
+                
+                if attempt < retries:
+                    logging.info(f"⏳ Retrying in {wait_time}s...")
+                    time.sleep(wait_time)
+                else:
+                    logging.error("❌ Connection failed after all retries")
+                    return "Sorry, I'm having trouble connecting to the AI service. Please try again in a moment."
 
             except requests.exceptions.HTTPError as e:
-                logging.error(f"❌ LLM HTTP error: {e}")
-                if attempt == retries:
-                    return "Sorry, AI service error. Please try again."
-                time.sleep(0.3)
+                status_code = e.response.status_code if hasattr(e, 'response') else None
+                
+                # Handle rate limiting specially
+                if status_code == 429:
+                    wait_time = 5 * attempt  # Longer wait for rate limits
+                    logging.warning(f"🚦 Rate limit hit (attempt {attempt}/{retries})")
+                    if attempt < retries:
+                        logging.info(f"⏳ Waiting {wait_time}s for rate limit...")
+                        time.sleep(wait_time)
+                    else:
+                        return "Sorry, too many requests. Please wait a moment and try again."
+                else:
+                    logging.error(f"❌ LLM HTTP error {status_code}: {e}")
+                    if attempt < retries:
+                        time.sleep(2 ** attempt)
+                    else:
+                        return "Sorry, AI service error. Please try again later."
+
+            except KeyError as e:
+                # Handle malformed API response
+                logging.error(f"❌ Malformed API response: {e}")
+                if attempt < retries:
+                    time.sleep(2 ** attempt)
+                else:
+                    return "Sorry, received invalid response from AI service."
 
             except Exception as e:
-                logging.error(f"❌ LLM unexpected error: {e}")
-                return "Sorry, an error occurred. Please try again."
+                logging.error(f"❌ LLM unexpected error (attempt {attempt}/{retries}): {type(e).__name__}: {str(e)[:200]}")
+                if attempt < retries:
+                    time.sleep(2 ** attempt)
+                else:
+                    return "Sorry, an unexpected error occurred. Please try again."
 
-        logging.error("LLM generation failed after retries")
-        return "Sorry, I'm having trouble right now. Please try again."
-    def summarize(self, prompt: str) -> str:
-        """Summarize conversation history"""
-        response = self.client.generate_completion(
-            prompt=prompt,
-            temperature=0.2,
-            max_tokens=300
-        )
-        return response["choices"][0]["message"]["content"]
-    
-    def generate_title(self, question: str) -> str:
-        """Generate a concise title for the chat session"""
+        # Should never reach here, but just in case
+        logging.error("LLM generation failed after all retries")
+        return "Sorry, I'm having trouble right now. Please try again in a few moments."
+
+    def summarize(self, prompt: str, retries: int = 3) -> str:
+        """Summarize conversation history with retry logic"""
+        
+        for attempt in range(1, retries + 1):
+            try:
+                logging.info(f"Summarization attempt {attempt}/{retries}")
+                
+                response = self.client.generate_completion(
+                    prompt=prompt,
+                    temperature=0.2,
+                    max_tokens=300
+                )
+                
+                summary = response["choices"][0]["message"]["content"]
+                logging.info(f"✅ Summary generated ({len(summary)} chars)")
+                return summary
+                
+            except (requests.exceptions.ConnectionError, 
+                    ConnectionResetError,
+                    requests.exceptions.ChunkedEncodingError,
+                    BrokenPipeError,
+                    OSError) as e:
+                wait_time = 2 ** attempt  # 2s, 4s, 8s
+                error_msg = str(e)[:100]
+                logging.warning(f"🔌 Summarization connection error (attempt {attempt}/{retries}): {error_msg}")
+                
+                if attempt < retries:
+                    logging.info(f"⏳ Retrying in {wait_time}s...")
+                    time.sleep(wait_time)
+                else:
+                    logging.error("❌ Summarization failed after all retries")
+                    return "Unable to generate summary due to connection issues."
+            
+            except Exception as e:
+                logging.error(f"❌ Summarization error (attempt {attempt}/{retries}): {type(e).__name__}: {str(e)[:200]}")
+                if attempt < retries:
+                    time.sleep(2 ** attempt)
+                else:
+                    return "Unable to generate summary."
+        
+        return "Unable to generate summary."
+        
+    def generate_title(self, question: str, retries: int = 3) -> str:
+        """Generate a concise title for the chat session with retry logic"""
+        
         prompt = f"""Generate a short, descriptive title (3-6 words) for a chat that starts with this question:
 
-"{question}"
+                    "{question}"
 
-Requirements:
-- 3-6 words maximum
-- Capture the main topic
-- No quotes, no extra text
-- Professional and clear
+                    Requirements:
+                    - 3-6 words maximum
+                    - Capture the main topic
+                    - No quotes, no extra text
+                    - Professional and clear
 
-Title:"""
+                    Title:"""
         
-        try:
-            response = self.client.generate_completion(
-                prompt=prompt,
-                temperature=0.3,
-                max_tokens=20
-            )
+        for attempt in range(1, retries + 1):
+            try:
+                logging.info(f"Title generation attempt {attempt}/{retries}")
+                
+                response = self.client.generate_completion(
+                    prompt=prompt,
+                    temperature=0.3,
+                    max_tokens=20
+                )
+                
+                title = response["choices"][0]["message"]["content"].strip()
+                
+                # Validation: fallback if AI gives weird response
+                if len(title) > 60 or len(title) < 3 or '\n' in title:
+                    title = self._extract_simple_title(question)
+                
+                logging.info(f"✅ Title generated: {title}")
+                return title
             
-            title = response["choices"][0]["message"]["content"].strip()
+            except (requests.exceptions.ConnectionError, 
+                    ConnectionResetError,
+                    requests.exceptions.ChunkedEncodingError,
+                    BrokenPipeError,
+                    OSError) as e:
+                wait_time = 2 ** attempt
+                error_msg = str(e)[:100]
+                logging.warning(f"🔌 Title generation connection error (attempt {attempt}/{retries}): {error_msg}")
+                
+                if attempt < retries:
+                    logging.info(f"⏳ Retrying in {wait_time}s...")
+                    time.sleep(wait_time)
+                else:
+                    logging.error("❌ Title generation failed after all retries, using fallback")
+                    return self._extract_simple_title(question)
             
-            # Validation: fallback if AI gives weird response
-            if len(title) > 60 or len(title) < 3 or '\n' in title:
-                # Simple fallback: extract keywords
-                title = self._extract_simple_title(question)
-            
-            return title
-            
-        except Exception as e:
-            logging.error(f"Title generation failed: {e}")
-            return self._extract_simple_title(question)
+            except Exception as e:
+                logging.error(f"❌ Title generation error: {type(e).__name__}: {str(e)[:200]}")
+                return self._extract_simple_title(question)
+        
+        # Fallback if all retries fail
+        return self._extract_simple_title(question)
     
     def _extract_simple_title(self, question: str) -> str:
         """Fallback: extract simple title from question"""
-        # Remove common question words
         words_to_remove = ['what', 'how', 'why', 'when', 'where', 'is', 'are', 
                           'can', 'could', 'would', 'tell me', 'explain', 'describe',
                           'the', 'a', 'an', 'in', 'on', 'at', 'to', 'for']
